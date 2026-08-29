@@ -1,0 +1,23 @@
+{
+  "name": "branchchat-codex-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local MCP server for the BranchChat Codex plugin.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "esbuild mcp/server.mjs --bundle --platform=node --format=esm --target=node20 --legal-comments=eof --outfile=dist/server.mjs",
+    "test": "npm run build && node --test",
+    "validate": "node scripts/validate.mjs",
+    "smoke": "bash scripts/smoke-test.sh"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

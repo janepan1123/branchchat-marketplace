@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "branchchat": {
+      "command": "/bin/bash",
+      "args": [
+        "scripts/run-server.sh"
+      ],
+      "cwd": "."
+    }
+  }
+}

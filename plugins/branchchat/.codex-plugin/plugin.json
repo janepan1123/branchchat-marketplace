@@ -1,0 +1,36 @@
+{
+  "name": "branchchat",
+  "version": "0.1.0+codex.20260829081817",
+  "description": "Bind each Codex coding conversation to one Git branch and one isolated worktree.",
+  "author": {
+    "name": "BranchChat"
+  },
+  "license": "UNLICENSED",
+  "keywords": [
+    "codex",
+    "git",
+    "branch",
+    "worktree",
+    "coding-session"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "BranchChat",
+    "shortDescription": "One coding chat, one branch, one isolated worktree",
+    "longDescription": "Create, inspect, and switch isolated Codex coding sessions without manually managing Git branches and worktrees.",
+    "developerName": "BranchChat",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Create an isolated branch for this coding task.",
+      "Show my BranchChat tasks.",
+      "Which branch belongs to this conversation?"
+    ],
+    "brandColor": "#B01875"
+  }
+}

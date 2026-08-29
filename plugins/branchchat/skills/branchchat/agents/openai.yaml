@@ -1,0 +1,4 @@
+interface:
+  display_name: "BranchChat"
+  short_description: "Bind Codex conversations to isolated Git worktrees"
+  default_prompt: "Create an isolated BranchChat task from this conversation."
