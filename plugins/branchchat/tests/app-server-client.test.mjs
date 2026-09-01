@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import { PassThrough, Writable } from "node:stream";
 import { AppServerClient, appServerInitializeParams } from "../mcp/lib/app-server-client.mjs";
 
 class RecordingAppServerClient extends AppServerClient {
@@ -31,5 +33,99 @@ test("forkThread excludes the active turn and replaces the runtime workspace", a
       excludeTurns: true,
       beforeTurnId: "turn-active",
     },
+  });
+});
+
+function fakeAppServer(onMessage) {
+  const child = new EventEmitter();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.stdin = new Writable({
+    write(chunk, _encoding, callback) {
+      for (const line of String(chunk).trim().split("\n").filter(Boolean)) {
+        onMessage(JSON.parse(line), child);
+      }
+      callback();
+    },
+  });
+  child.kill = () => {
+    queueMicrotask(() => {
+      child.stdout.end();
+      child.stderr.end();
+      child.emit("close", null, "SIGTERM");
+    });
+    return true;
+  };
+  return child;
+}
+
+test("retries a transient App Server startup exit", async () => {
+  let spawnCount = 0;
+  const client = new AppServerClient({
+    startupRetries: 1,
+    findExecutable: async () => "/test/codex",
+    spawnCommand: () => {
+      spawnCount += 1;
+      return fakeAppServer((message, child) => {
+        if (message.method !== "initialize") return;
+        if (spawnCount === 1) {
+          child.stderr.write("temporary startup failure\n");
+          queueMicrotask(() => {
+            child.stdout.end();
+            child.stderr.end();
+            child.emit("close", 1, null);
+          });
+          return;
+        }
+        child.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} })}\n`);
+      });
+    },
+  });
+
+  await client.connect();
+  assert.equal(spawnCount, 2);
+  client.close();
+});
+
+test("serializes concurrent App Server initialization", async () => {
+  let spawnCount = 0;
+  const client = new AppServerClient({
+    findExecutable: async () => "/test/codex",
+    spawnCommand: () => {
+      spawnCount += 1;
+      return fakeAppServer((message, child) => {
+        if (message.method !== "initialize") return;
+        setImmediate(() => {
+          child.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} })}\n`);
+        });
+      });
+    },
+  });
+
+  await Promise.all([client.connect(), client.connect(), client.connect()]);
+  assert.equal(spawnCount, 1);
+  client.close();
+});
+
+test("reports App Server exit details instead of a generic internal error", async () => {
+  const client = new AppServerClient({
+    startupRetries: 0,
+    findExecutable: async () => "/test/codex",
+    spawnCommand: () => fakeAppServer((message, child) => {
+      if (message.method !== "initialize") return;
+      child.stderr.write("configuration rejected\n");
+      queueMicrotask(() => {
+        child.stdout.end();
+        child.stderr.end();
+        child.emit("close", 1, null);
+      });
+    }),
+  });
+
+  await assert.rejects(client.connect(), (error) => {
+    assert.equal(error.code, "APP_SERVER_EXITED");
+    assert.equal(error.details.exitCode, 1);
+    assert.match(error.details.stderr, /configuration rejected/);
+    return true;
   });
 });

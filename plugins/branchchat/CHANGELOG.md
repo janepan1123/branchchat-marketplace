@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0 App Server resilience - 2026-09-01
+
+- Retry transient Codex App Server startup exits before any Git resources are created.
+- Preserve sanitized App Server exit diagnostics and return `APP_SERVER_EXITED` instead of a generic internal error.
+- Serialize concurrent App Server initialization and never retry mutating task-fork requests.
+
 ## 0.1.0 automatic default base detection - 2026-09-01
 
 - Detect the remote default branch when `baseRef` is omitted instead of assuming `main`.

@@ -15878,6 +15878,21 @@ async function findCodexExecutable(env = process.env, home = os.homedir()) {
 
 // mcp/lib/app-server-client.mjs
 var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+var MAX_STDERR_LENGTH = 4e3;
+function safeStderr(value) {
+  return String(value || "").trim().replace(/\b(sk-[A-Za-z0-9_-]{10,})\b/g, "[REDACTED]").replace(/\b(authorization|api[_-]?key|token|secret|password)\s*[:=]\s*\S+/gi, "$1=[REDACTED]").slice(-MAX_STDERR_LENGTH);
+}
+function appServerExitError({ code, signal, executable: executable2, stderr }) {
+  const diagnostic = safeStderr(stderr);
+  const status = code === null || code === void 0 ? "without an exit code" : `with code ${code}`;
+  const signalSuffix = signal ? ` (signal ${signal})` : "";
+  const diagnosticSuffix = diagnostic ? `: ${diagnostic}` : ".";
+  return new BranchChatError(
+    "APP_SERVER_EXITED",
+    `Codex App Server exited ${status}${signalSuffix}${diagnosticSuffix}`,
+    { details: { exitCode: code ?? null, signal: signal || null, executable: executable2, stderr: diagnostic || null } }
+  );
+}
 function appServerInitializeParams() {
   return {
     clientInfo: { name: "branchchat", title: "BranchChat", version: "0.1.0" },
@@ -15885,36 +15900,93 @@ function appServerInitializeParams() {
   };
 }
 var AppServerClient = class {
-  constructor({ env = process.env, requestTimeoutMs = 3e4 } = {}) {
+  constructor({
+    env = process.env,
+    requestTimeoutMs = 3e4,
+    startupRetries = 2,
+    spawnCommand = spawn,
+    findExecutable = findCodexExecutable
+  } = {}) {
     this.env = env;
     this.requestTimeoutMs = requestTimeoutMs;
+    this.startupRetries = startupRetries;
+    this.spawnCommand = spawnCommand;
+    this.findExecutable = findExecutable;
     this.nextId = 1;
     this.pending = /* @__PURE__ */ new Map();
   }
   async connect() {
+    if (this.connectPromise) return this.connectPromise;
     if (this.child) return this;
-    const executable2 = await findCodexExecutable(this.env);
+    const pendingConnect = this.#connectWithRetries();
+    this.connectPromise = pendingConnect;
+    try {
+      return await pendingConnect;
+    } finally {
+      if (this.connectPromise === pendingConnect) this.connectPromise = null;
+    }
+  }
+  async #connectWithRetries() {
+    const executable2 = await this.findExecutable(this.env);
     if (!executable2) {
       throw new BranchChatError("CODEX_NOT_FOUND", "Could not find the Codex executable. Set BRANCHCHAT_CODEX_PATH.");
     }
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await this.#start(executable2);
+        return this;
+      } catch (error2) {
+        if (!["APP_SERVER_EXITED", "APP_SERVER_IO_ERROR"].includes(error2?.code) || attempt >= this.startupRetries) {
+          throw error2;
+        }
+        await sleep(100 * 2 ** attempt);
+      }
+    }
+  }
+  async #start(executable2) {
     const childEnv = { ...this.env };
     const binDirectory = path2.dirname(executable2);
     childEnv.PATH = `${binDirectory}${path2.delimiter}${childEnv.PATH || ""}`;
-    this.child = spawn(executable2, ["app-server"], {
+    const child = this.spawnCommand(executable2, ["app-server"], {
       env: childEnv,
       shell: false,
       stdio: ["pipe", "pipe", "pipe"]
     });
-    this.child.stderr.setEncoding("utf8");
-    this.child.stderr.on("data", () => {
+    this.child = child;
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      stderr = `${stderr}${chunk}`.slice(-MAX_STDERR_LENGTH * 2);
     });
-    this.child.on("error", (error2) => this.#rejectAll(error2));
-    this.child.on("close", (code) => this.#rejectAll(new Error(`Codex App Server exited with ${code}`)));
-    const lines = readline.createInterface({ input: this.child.stdout });
+    child.stdin.on("error", (error2) => {
+      this.#handleChildFailure(child, new BranchChatError(
+        "APP_SERVER_IO_ERROR",
+        `Could not write to Codex App Server: ${error2.message}`,
+        { details: { executable: executable2 } }
+      ));
+      child.kill();
+    });
+    child.on("error", (error2) => this.#handleChildFailure(child, new BranchChatError(
+      "APP_SERVER_LAUNCH_FAILED",
+      `Could not start Codex App Server: ${error2.message}`,
+      { details: { executable: executable2 } }
+    )));
+    child.on("close", (code, signal) => this.#handleChildFailure(
+      child,
+      appServerExitError({ code, signal, executable: executable2, stderr })
+    ));
+    const lines = readline.createInterface({ input: child.stdout });
     lines.on("line", (line) => this.#onLine(line));
-    await this.request("initialize", appServerInitializeParams());
-    this.notify("initialized", {});
-    return this;
+    try {
+      await this.#requestOnce("initialize", appServerInitializeParams());
+      this.notify("initialized", {});
+    } catch (error2) {
+      if (child === this.child) {
+        this.child = null;
+        child.kill();
+      }
+      throw error2;
+    }
   }
   #onLine(line) {
     let message;
@@ -15936,34 +16008,51 @@ var AppServerClient = class {
       pending.reject(error2);
     } else pending.resolve(message.result);
   }
+  #handleChildFailure(child, error2) {
+    if (child !== this.child) return;
+    this.child = null;
+    this.#rejectAll(error2);
+  }
   #rejectAll(error2) {
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(error2);
     }
     this.pending.clear();
-    this.child = null;
   }
   notify(method, params) {
+    if (!this.child) {
+      throw new BranchChatError("APP_SERVER_DISCONNECTED", "Codex App Server is not connected.");
+    }
     this.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method, params })}
 `);
   }
-  async request(method, params = {}, { retries = 4 } = {}) {
-    await this.connectIfNeeded(method);
-    for (let attempt = 0; ; attempt += 1) {
+  async request(method, params = {}, { retries = 4, reconnectRetries = 0 } = {}) {
+    for (let reconnectAttempt = 0; ; reconnectAttempt += 1) {
+      await this.connectIfNeeded(method);
       try {
-        return await this.#requestOnce(method, params);
+        for (let attempt = 0; ; attempt += 1) {
+          try {
+            return await this.#requestOnce(method, params);
+          } catch (error2) {
+            if (error2.appServerCode !== -32001 || attempt >= retries) throw error2;
+            await sleep(100 * 2 ** attempt + Math.floor(Math.random() * 100));
+          }
+        }
       } catch (error2) {
-        if (error2.appServerCode !== -32001 || attempt >= retries) throw error2;
-        await sleep(100 * 2 ** attempt + Math.floor(Math.random() * 100));
+        if (error2?.code !== "APP_SERVER_EXITED" || reconnectAttempt >= reconnectRetries) throw error2;
       }
     }
   }
   async connectIfNeeded(method) {
-    if (!this.child && method !== "initialize") await this.connect();
+    if (method !== "initialize" && (this.connectPromise || !this.child)) await this.connect();
   }
   #requestOnce(method, params) {
     return new Promise((resolve, reject) => {
+      if (!this.child) {
+        reject(new BranchChatError("APP_SERVER_DISCONNECTED", "Codex App Server is not connected."));
+        return;
+      }
       const id = this.nextId++;
       const timer = setTimeout(() => {
         this.pending.delete(id);
@@ -15975,7 +16064,7 @@ var AppServerClient = class {
     });
   }
   async threadRead(threadId, { includeTurns = false } = {}) {
-    const result = await this.request("thread/read", { threadId, includeTurns });
+    const result = await this.request("thread/read", { threadId, includeTurns }, { reconnectRetries: 1 });
     return result.thread || result;
   }
   async forkThread(threadId, cwd, { beforeTurnId } = {}) {
@@ -15991,11 +16080,13 @@ var AppServerClient = class {
     return this.request("thread/metadata/update", { threadId, gitInfo }, { retries: 1 });
   }
   async listThreads(limit = 20) {
-    return this.request("thread/list", { limit, sortKey: "updated_at" });
+    return this.request("thread/list", { limit, sortKey: "updated_at" }, { reconnectRetries: 1 });
   }
   close() {
-    this.child?.kill();
+    const child = this.child;
     this.child = null;
+    this.#rejectAll(new BranchChatError("APP_SERVER_CLOSED", "Codex App Server connection was closed."));
+    child?.kill();
   }
 };
 

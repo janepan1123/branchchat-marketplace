@@ -8,6 +8,7 @@ BranchChat state at `~/.branchchat/state.json` is the source of truth for thread
 - `STATE_CORRUPT`: preserve the state file and report its path. Do not overwrite it with an empty state.
 - `THREAD_FORK_FAILED`: report whether the newly created worktree/branch were rolled back, plus the returned App Server error details. If cleanup was incomplete, preserve every recovery path and command detail returned by the tool.
 - `APP_SERVER_ERROR` mentioning `experimentalApi`: the installed plugin is outdated or the Codex App Server predates the required capability. Upgrade BranchChat first; only recommend upgrading Codex if the error remains on the current plugin.
+- `APP_SERVER_EXITED`: BranchChat already retried transient startup failures before touching Git. Report the included sanitized stderr and executable details; do not retry `thread/fork` or fall back to manual Git after this error.
 - `TITLE_SYNC_FAILED`: the coding task remains usable. Suggest `branchchat_sync` after the target conversation has completed its first turn.
 - `DEEPLINK_OPEN_FAILED`: the task still exists. Give the thread ID so the user can select it from Codex history.
 
