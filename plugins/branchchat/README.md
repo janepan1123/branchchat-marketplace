@@ -19,11 +19,14 @@ Examples:
 
 ```text
 Create an isolated BranchChat task named Backend API from main.
+Create an isolated BranchChat task named Backend API.
 Show my BranchChat tasks.
 Which branch and worktree belong to this conversation?
 Open the Backend API task.
 Inspect the current task before finishing.
 ```
+
+When no base ref is specified, BranchChat detects the remote default branch (for example `main` or `master`) and falls back to the current source branch when no remote default is available. An explicitly requested missing ref still fails with `BASE_REF_NOT_FOUND`.
 
 BranchChat never automatically merges, pushes, resets, cleans, or deletes a branch.
 If BranchChat cannot create a task, it reports the failure and does not fall back to a Codex-native worktree.

@@ -61,6 +61,41 @@ export async function resolveCommit(repoRoot, ref, options = {}) {
   }
 }
 
+async function refResolvesToCommit(repoRoot, ref, options = {}) {
+  const result = await git(["-C", repoRoot, "rev-parse", "--verify", `${ref}^{commit}`], {
+    ...options,
+    allowFailure: true,
+  });
+  return result.code === 0;
+}
+
+export async function detectDefaultBaseRef(repoRoot, worktreeRoot, options = {}) {
+  const remotesResult = await git(["-C", repoRoot, "remote"], { ...options, allowFailure: true });
+  const remotes = remotesResult.stdout.split(/\r?\n/).filter(Boolean)
+    .sort((left, right) => Number(right === "origin") - Number(left === "origin"));
+
+  for (const remote of remotes) {
+    const symbolic = await git([
+      "-C", repoRoot, "symbolic-ref", "--quiet", "--short", `refs/remotes/${remote}/HEAD`,
+    ], { ...options, allowFailure: true });
+    if (symbolic.code !== 0) continue;
+    const remoteRef = symbolic.stdout;
+    const remotePrefix = `${remote}/`;
+    if (!remoteRef.startsWith(remotePrefix) || !(await refResolvesToCommit(repoRoot, remoteRef, options))) continue;
+    const localBranch = remoteRef.slice(remotePrefix.length);
+    if (await branchExists(repoRoot, localBranch, options)) return localBranch;
+    return remoteRef;
+  }
+
+  const sourceBranch = await currentBranch(worktreeRoot, options);
+  if (sourceBranch && await refResolvesToCommit(repoRoot, sourceBranch, options)) return sourceBranch;
+  if (await refResolvesToCommit(worktreeRoot, "HEAD", options)) return "HEAD";
+
+  throw new BranchChatError("BASE_REF_NOT_FOUND", "No default base ref could be detected for this repository.", {
+    details: { repoRoot, worktreeRoot },
+  });
+}
+
 export async function validateBranchName(repoRoot, branch, options = {}) {
   const result = await git(["-C", repoRoot, "check-ref-format", "--branch", branch], {
     ...options,

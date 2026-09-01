@@ -97,15 +97,15 @@ export class AppServerClient {
     });
   }
 
-  async threadRead(threadId) {
-    const result = await this.request("thread/read", { threadId, includeTurns: false });
+  async threadRead(threadId, { includeTurns = false } = {}) {
+    const result = await this.request("thread/read", { threadId, includeTurns });
     return result.thread || result;
   }
 
-  async forkThread(threadId, cwd) {
-    const result = await this.request("thread/fork", {
-      threadId, cwd, runtimeWorkspaceRoots: [cwd], excludeTurns: true,
-    });
+  async forkThread(threadId, cwd, { beforeTurnId } = {}) {
+    const params = { threadId, cwd, runtimeWorkspaceRoots: [cwd], excludeTurns: true };
+    if (beforeTurnId) params.beforeTurnId = beforeTurnId;
+    const result = await this.request("thread/fork", params);
     return result.thread || result;
   }
 

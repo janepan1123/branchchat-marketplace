@@ -23,7 +23,7 @@ export const tools = [
       properties: {
         taskTitle: { type: "string", minLength: 1, description: "Human-readable task title." },
         branchName: { type: "string", minLength: 1, description: "Optional valid new Git branch name." },
-        baseRef: { type: "string", default: "main", description: "Git ref used as the frozen starting commit." },
+        baseRef: { type: "string", minLength: 1, description: "Optional Git ref used as the frozen starting commit. When omitted, BranchChat detects the remote default branch, then the current worktree branch." },
         openAfterCreate: { type: "boolean", default: true, description: "Try to open the new Codex task on macOS." },
       },
       required: ["taskTitle"],

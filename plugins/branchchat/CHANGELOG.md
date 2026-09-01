@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0 automatic default base detection - 2026-09-01
+
+- Detect the remote default branch when `baseRef` is omitted instead of assuming `main`.
+- Fall back to the current source worktree branch when no remote default reference is available.
+- Preserve strict `BASE_REF_NOT_FOUND` behavior for explicitly requested refs.
+- Fork before the active MCP turn so Codex copies only completed history into the child task.
+- Preserve App Server error details when a thread fork fails and is safely rolled back.
+
 ## 0.1.0 repository-associated worktrees - 2026-09-01
 
 - Create new worktrees in a repository-named sibling directory instead of a Codex or BranchChat home directory.

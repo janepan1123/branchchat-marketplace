@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   branchExists,
   createWorktree,
+  detectDefaultBaseRef,
   discoverRepository,
   headSha,
   resolveCommit,
@@ -30,6 +31,20 @@ function now() { return new Date().toISOString(); }
 function threadIdOf(thread) { return thread?.id || thread?.threadId; }
 function threadCwdOf(thread) { return thread?.cwd || thread?.workingDirectory || thread?.workspace?.cwd; }
 function threadNameOf(thread) { return thread?.name || thread?.title || null; }
+function activeTurnIdOf(thread) {
+  const turns = Array.isArray(thread?.turns) ? thread.turns : [];
+  return turns.findLast((turn) => turn?.status === "inProgress")?.id || null;
+}
+function turnIdOf(meta) {
+  return meta?.turnId || meta?.turn_id || meta?.["codex/turnId"] || meta?.["codex/turn-id"] || null;
+}
+function appServerFailure(error) {
+  return {
+    code: error?.code || "APP_SERVER_ERROR",
+    message: error instanceof Error ? error.message : String(error),
+    details: error?.details || {},
+  };
+}
 function shortBranch(branch) { return branch.includes("/") ? branch.slice(branch.lastIndexOf("/") + 1) : branch; }
 function shellQuote(value) { return `'${String(value).replaceAll("'", `'\\''`)}'`; }
 
@@ -66,8 +81,11 @@ export class TaskService {
     const sourceThreadId = this.requireThreadId(meta);
     const taskTitleValue = String(input.taskTitle || "").trim();
     if (!taskTitleValue) throw new BranchChatError("INVALID_INPUT", "taskTitle is required.");
-    const baseRef = String(input.baseRef || "main").trim();
-    const sourceThread = await this.appServer.threadRead(sourceThreadId);
+    const requestedBaseRef = input.baseRef === undefined ? null : String(input.baseRef).trim();
+    if (input.baseRef !== undefined && !requestedBaseRef) {
+      throw new BranchChatError("INVALID_INPUT", "baseRef must not be empty when provided.");
+    }
+    const sourceThread = await this.appServer.threadRead(sourceThreadId, { includeTurns: true });
     const sourceCwd = threadCwdOf(sourceThread);
     if (!sourceCwd) {
       throw new BranchChatError("THREAD_CWD_UNAVAILABLE", "The current Codex task has no working directory.", {
@@ -75,6 +93,8 @@ export class TaskService {
       });
     }
     const { repoRoot, worktreeRoot } = await discoverRepository(sourceCwd, this.gitOptions);
+    const beforeTurnId = activeTurnIdOf(sourceThread) || turnIdOf(meta);
+    const baseRef = requestedBaseRef || await detectDefaultBaseRef(repoRoot, worktreeRoot, this.gitOptions);
     const repoId = repoIdFor(repoRoot);
     const taskId = newTaskId();
     const branch = String(input.branchName || defaultBranchName(taskTitleValue, taskId)).trim();
@@ -126,7 +146,7 @@ export class TaskService {
 
       let childThread;
       try {
-        childThread = await this.appServer.forkThread(sourceThreadId, worktreePath);
+        childThread = await this.appServer.forkThread(sourceThreadId, worktreePath, { beforeTurnId });
       } catch (error) {
         try {
           await rollbackFreshWorktree(repoRoot, task, this.gitOptions);
@@ -137,12 +157,12 @@ export class TaskService {
             error: { code: rollbackError.code || "ROLLBACK_FAILED", message: rollbackError.message },
           });
           throw new BranchChatError("CREATE_FAILED_ROLLBACK_INCOMPLETE", "Codex task creation failed and safe rollback was incomplete.", {
-            details: { taskId, worktreePath, branch, originalError: error.message, rollbackError: rollbackError.message },
+            details: { taskId, worktreePath, branch, appServer: appServerFailure(error), rollbackError: rollbackError.message },
             cause: error,
           });
         }
         throw new BranchChatError("THREAD_FORK_FAILED", "Codex could not fork the current task; the new Git resources were rolled back.", {
-          details: { sourceThreadId }, cause: error,
+          details: { sourceThreadId, beforeTurnId, appServer: appServerFailure(error) }, cause: error,
         });
       }
 
@@ -195,6 +215,7 @@ export class TaskService {
           threadId: childThreadId,
           sourceThreadId,
           branch,
+          baseRef,
           baseSha,
           worktreePath,
           threadTitle: desiredTitle,

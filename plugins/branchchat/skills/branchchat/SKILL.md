@@ -27,6 +27,7 @@ Read [references/tool-contracts.md](references/tool-contracts.md) when selecting
 ## Required behavior
 
 - Creating a task defaults to forking the current conversation. If the MCP context does not provide the current thread ID, stop with `CURRENT_THREAD_UNAVAILABLE`; do not guess from recent conversations.
+- When the user does not name a base ref, omit `baseRef` and let the server detect the repository default. Never assume `main`.
 - Let the BranchChat MCP tool create and validate branches/worktrees. Do not reproduce its Git mutations manually.
 - If BranchChat task creation fails, surface its error and stop. Never fall back to a Codex-native worktree under `~/.codex/worktrees`.
 - Before creation, tell the user that uncommitted source-worktree changes are not copied into a task based on another ref.

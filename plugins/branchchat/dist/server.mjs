@@ -15971,17 +15971,14 @@ var AppServerClient = class {
 `);
     });
   }
-  async threadRead(threadId) {
-    const result = await this.request("thread/read", { threadId, includeTurns: false });
+  async threadRead(threadId, { includeTurns = false } = {}) {
+    const result = await this.request("thread/read", { threadId, includeTurns });
     return result.thread || result;
   }
-  async forkThread(threadId, cwd) {
-    const result = await this.request("thread/fork", {
-      threadId,
-      cwd,
-      runtimeWorkspaceRoots: [cwd],
-      excludeTurns: true
-    });
+  async forkThread(threadId, cwd, { beforeTurnId } = {}) {
+    const params = { threadId, cwd, runtimeWorkspaceRoots: [cwd], excludeTurns: true };
+    if (beforeTurnId) params.beforeTurnId = beforeTurnId;
+    const result = await this.request("thread/fork", params);
     return result.thread || result;
   }
   async setThreadName(threadId, name) {
@@ -16239,6 +16236,40 @@ async function resolveCommit(repoRoot, ref, options = {}) {
     });
   }
 }
+async function refResolvesToCommit(repoRoot, ref, options = {}) {
+  const result = await git(["-C", repoRoot, "rev-parse", "--verify", `${ref}^{commit}`], {
+    ...options,
+    allowFailure: true
+  });
+  return result.code === 0;
+}
+async function detectDefaultBaseRef(repoRoot, worktreeRoot, options = {}) {
+  const remotesResult = await git(["-C", repoRoot, "remote"], { ...options, allowFailure: true });
+  const remotes = remotesResult.stdout.split(/\r?\n/).filter(Boolean).sort((left, right) => Number(right === "origin") - Number(left === "origin"));
+  for (const remote of remotes) {
+    const symbolic = await git([
+      "-C",
+      repoRoot,
+      "symbolic-ref",
+      "--quiet",
+      "--short",
+      `refs/remotes/${remote}/HEAD`
+    ], { ...options, allowFailure: true });
+    if (symbolic.code !== 0) continue;
+    const remoteRef = symbolic.stdout;
+    const remotePrefix = `${remote}/`;
+    if (!remoteRef.startsWith(remotePrefix) || !await refResolvesToCommit(repoRoot, remoteRef, options)) continue;
+    const localBranch = remoteRef.slice(remotePrefix.length);
+    if (await branchExists(repoRoot, localBranch, options)) return localBranch;
+    return remoteRef;
+  }
+  const sourceBranch = await currentBranch(worktreeRoot, options);
+  if (sourceBranch && await refResolvesToCommit(repoRoot, sourceBranch, options)) return sourceBranch;
+  if (await refResolvesToCommit(worktreeRoot, "HEAD", options)) return "HEAD";
+  throw new BranchChatError("BASE_REF_NOT_FOUND", "No default base ref could be detected for this repository.", {
+    details: { repoRoot, worktreeRoot }
+  });
+}
 async function validateBranchName(repoRoot, branch, options = {}) {
   const result = await git(["-C", repoRoot, "check-ref-format", "--branch", branch], {
     ...options,
@@ -16399,6 +16430,20 @@ function threadCwdOf(thread) {
 function threadNameOf(thread) {
   return thread?.name || thread?.title || null;
 }
+function activeTurnIdOf(thread) {
+  const turns = Array.isArray(thread?.turns) ? thread.turns : [];
+  return turns.findLast((turn) => turn?.status === "inProgress")?.id || null;
+}
+function turnIdOf(meta2) {
+  return meta2?.turnId || meta2?.turn_id || meta2?.["codex/turnId"] || meta2?.["codex/turn-id"] || null;
+}
+function appServerFailure(error2) {
+  return {
+    code: error2?.code || "APP_SERVER_ERROR",
+    message: error2 instanceof Error ? error2.message : String(error2),
+    details: error2?.details || {}
+  };
+}
 function shortBranch2(branch) {
   return branch.includes("/") ? branch.slice(branch.lastIndexOf("/") + 1) : branch;
 }
@@ -16436,8 +16481,11 @@ var TaskService = class {
     const sourceThreadId = this.requireThreadId(meta2);
     const taskTitleValue = String(input.taskTitle || "").trim();
     if (!taskTitleValue) throw new BranchChatError("INVALID_INPUT", "taskTitle is required.");
-    const baseRef = String(input.baseRef || "main").trim();
-    const sourceThread = await this.appServer.threadRead(sourceThreadId);
+    const requestedBaseRef = input.baseRef === void 0 ? null : String(input.baseRef).trim();
+    if (input.baseRef !== void 0 && !requestedBaseRef) {
+      throw new BranchChatError("INVALID_INPUT", "baseRef must not be empty when provided.");
+    }
+    const sourceThread = await this.appServer.threadRead(sourceThreadId, { includeTurns: true });
     const sourceCwd = threadCwdOf(sourceThread);
     if (!sourceCwd) {
       throw new BranchChatError("THREAD_CWD_UNAVAILABLE", "The current Codex task has no working directory.", {
@@ -16445,6 +16493,8 @@ var TaskService = class {
       });
     }
     const { repoRoot, worktreeRoot } = await discoverRepository(sourceCwd, this.gitOptions);
+    const beforeTurnId = activeTurnIdOf(sourceThread) || turnIdOf(meta2);
+    const baseRef = requestedBaseRef || await detectDefaultBaseRef(repoRoot, worktreeRoot, this.gitOptions);
     const repoId = repoIdFor(repoRoot);
     const taskId = newTaskId();
     const branch = String(input.branchName || defaultBranchName(taskTitleValue, taskId)).trim();
@@ -16494,7 +16544,7 @@ var TaskService = class {
       await this.#updateTask(taskId, { status: "WORKTREE_CREATED" });
       let childThread;
       try {
-        childThread = await this.appServer.forkThread(sourceThreadId, worktreePath);
+        childThread = await this.appServer.forkThread(sourceThreadId, worktreePath, { beforeTurnId });
       } catch (error2) {
         try {
           await rollbackFreshWorktree(repoRoot, task, this.gitOptions);
@@ -16507,12 +16557,12 @@ var TaskService = class {
             error: { code: rollbackError.code || "ROLLBACK_FAILED", message: rollbackError.message }
           });
           throw new BranchChatError("CREATE_FAILED_ROLLBACK_INCOMPLETE", "Codex task creation failed and safe rollback was incomplete.", {
-            details: { taskId, worktreePath, branch, originalError: error2.message, rollbackError: rollbackError.message },
+            details: { taskId, worktreePath, branch, appServer: appServerFailure(error2), rollbackError: rollbackError.message },
             cause: error2
           });
         }
         throw new BranchChatError("THREAD_FORK_FAILED", "Codex could not fork the current task; the new Git resources were rolled back.", {
-          details: { sourceThreadId },
+          details: { sourceThreadId, beforeTurnId, appServer: appServerFailure(error2) },
           cause: error2
         });
       }
@@ -16567,6 +16617,7 @@ var TaskService = class {
           threadId: childThreadId,
           sourceThreadId,
           branch,
+          baseRef,
           baseSha,
           worktreePath,
           threadTitle: desiredTitle
@@ -16753,7 +16804,7 @@ var tools = [
       properties: {
         taskTitle: { type: "string", minLength: 1, description: "Human-readable task title." },
         branchName: { type: "string", minLength: 1, description: "Optional valid new Git branch name." },
-        baseRef: { type: "string", default: "main", description: "Git ref used as the frozen starting commit." },
+        baseRef: { type: "string", minLength: 1, description: "Optional Git ref used as the frozen starting commit. When omitted, BranchChat detects the remote default branch, then the current worktree branch." },
         openAfterCreate: { type: "boolean", default: true, description: "Try to open the new Codex task on macOS." }
       },
       required: ["taskTitle"],

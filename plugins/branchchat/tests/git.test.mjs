@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   createWorktree,
   currentBranch,
+  detectDefaultBaseRef,
   discoverRepository,
   git,
   resolveCommit,
@@ -42,4 +43,9 @@ test("Git helpers create a branch-bound worktree from a frozen SHA", async (t) =
 test("Git branch validation rejects invalid names", async (t) => {
   const root = await repository(t);
   await assert.rejects(validateBranchName(root, "bad branch"), (error) => error.code === "INVALID_BRANCH_NAME");
+});
+
+test("default base detection falls back to the current branch without a remote HEAD", async (t) => {
+  const root = await repository(t);
+  assert.equal(await detectDefaultBaseRef(root, root), "main");
 });
