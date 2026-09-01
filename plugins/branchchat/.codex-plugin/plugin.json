@@ -1,6 +1,6 @@
 {
   "name": "branchchat",
-  "version": "0.1.0+codex.20260901070438",
+  "version": "0.1.0+codex.20260901072413",
   "description": "Bind each Codex coding conversation to one Git branch and one isolated worktree.",
   "author": {
     "name": "BranchChat"

@@ -6,6 +6,13 @@ import { findCodexExecutable } from "./paths.mjs";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+export function appServerInitializeParams() {
+  return {
+    clientInfo: { name: "branchchat", title: "BranchChat", version: "0.1.0" },
+    capabilities: { experimentalApi: true },
+  };
+}
+
 export class AppServerClient {
   constructor({ env = process.env, requestTimeoutMs = 30_000 } = {}) {
     this.env = env;
@@ -32,10 +39,7 @@ export class AppServerClient {
     this.child.on("close", (code) => this.#rejectAll(new Error(`Codex App Server exited with ${code}`)));
     const lines = readline.createInterface({ input: this.child.stdout });
     lines.on("line", (line) => this.#onLine(line));
-    await this.request("initialize", {
-      clientInfo: { name: "branchchat", title: "BranchChat", version: "0.1.0" },
-      capabilities: {},
-    });
+    await this.request("initialize", appServerInitializeParams());
     this.notify("initialized", {});
     return this;
   }

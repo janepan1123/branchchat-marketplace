@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AppServerClient } from "../mcp/lib/app-server-client.mjs";
+import { AppServerClient, appServerInitializeParams } from "../mcp/lib/app-server-client.mjs";
 
 class RecordingAppServerClient extends AppServerClient {
   async request(method, params) {
@@ -8,6 +8,13 @@ class RecordingAppServerClient extends AppServerClient {
     return { thread: { id: "child", cwd: params.cwd } };
   }
 }
+
+test("BranchChat opts into the experimental App Server API", () => {
+  assert.deepEqual(appServerInitializeParams(), {
+    clientInfo: { name: "branchchat", title: "BranchChat", version: "0.1.0" },
+    capabilities: { experimentalApi: true },
+  });
+});
 
 test("forkThread excludes the active turn and replaces the runtime workspace", async () => {
   const client = new RecordingAppServerClient();

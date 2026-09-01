@@ -15878,6 +15878,12 @@ async function findCodexExecutable(env = process.env, home = os.homedir()) {
 
 // mcp/lib/app-server-client.mjs
 var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+function appServerInitializeParams() {
+  return {
+    clientInfo: { name: "branchchat", title: "BranchChat", version: "0.1.0" },
+    capabilities: { experimentalApi: true }
+  };
+}
 var AppServerClient = class {
   constructor({ env = process.env, requestTimeoutMs = 3e4 } = {}) {
     this.env = env;
@@ -15906,10 +15912,7 @@ var AppServerClient = class {
     this.child.on("close", (code) => this.#rejectAll(new Error(`Codex App Server exited with ${code}`)));
     const lines = readline.createInterface({ input: this.child.stdout });
     lines.on("line", (line) => this.#onLine(line));
-    await this.request("initialize", {
-      clientInfo: { name: "branchchat", title: "BranchChat", version: "0.1.0" },
-      capabilities: {}
-    });
+    await this.request("initialize", appServerInitializeParams());
     this.notify("initialized", {});
     return this;
   }

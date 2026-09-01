@@ -7,6 +7,7 @@
 - Preserve strict `BASE_REF_NOT_FOUND` behavior for explicitly requested refs.
 - Fork before the active MCP turn so Codex copies only completed history into the child task.
 - Preserve App Server error details when a thread fork fails and is safely rolled back.
+- Negotiate the `experimentalApi` App Server capability required by `thread/fork.runtimeWorkspaceRoots`.
 
 ## 0.1.0 repository-associated worktrees - 2026-09-01
 
