@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0 stable App Server working directory - 2026-09-01
+
+- Start the private Codex App Server from the user's home directory instead of inheriting the plugin cache directory.
+- Prevent `No such file or directory (os error 2)` after a no-restart plugin reinstall replaces the old cache directory.
+
 ## 0.1.0 no-restart reload workflow - 2026-09-01
 
 - Document the Codex Desktop plugin off/on workflow that reloads BranchChat MCP without quitting the app.

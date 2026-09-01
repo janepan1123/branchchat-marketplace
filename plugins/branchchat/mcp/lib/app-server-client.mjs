@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { BranchChatError } from "./errors.mjs";
@@ -41,12 +42,14 @@ export class AppServerClient {
     startupRetries = 2,
     spawnCommand = spawn,
     findExecutable = findCodexExecutable,
+    appServerCwd = os.homedir(),
   } = {}) {
     this.env = env;
     this.requestTimeoutMs = requestTimeoutMs;
     this.startupRetries = startupRetries;
     this.spawnCommand = spawnCommand;
     this.findExecutable = findExecutable;
+    this.appServerCwd = appServerCwd;
     this.nextId = 1;
     this.pending = new Map();
   }
@@ -85,7 +88,10 @@ export class AppServerClient {
     const binDirectory = path.dirname(executable);
     childEnv.PATH = `${binDirectory}${path.delimiter}${childEnv.PATH || ""}`;
     const child = this.spawnCommand(executable, ["app-server"], {
-      env: childEnv, shell: false, stdio: ["pipe", "pipe", "pipe"],
+      cwd: this.appServerCwd,
+      env: childEnv,
+      shell: false,
+      stdio: ["pipe", "pipe", "pipe"],
     });
     this.child = child;
     let stderr = "";

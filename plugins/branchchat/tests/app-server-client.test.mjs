@@ -107,6 +107,25 @@ test("serializes concurrent App Server initialization", async () => {
   client.close();
 });
 
+test("starts App Server from a stable directory instead of the plugin cache cwd", async () => {
+  let spawnOptions;
+  const client = new AppServerClient({
+    appServerCwd: "/stable/home",
+    findExecutable: async () => "/test/codex",
+    spawnCommand: (_executable, _args, options) => {
+      spawnOptions = options;
+      return fakeAppServer((message, child) => {
+        if (message.method !== "initialize") return;
+        child.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} })}\n`);
+      });
+    },
+  });
+
+  await client.connect();
+  assert.equal(spawnOptions.cwd, "/stable/home");
+  client.close();
+});
+
 test("reports App Server exit details instead of a generic internal error", async () => {
   const client = new AppServerClient({
     startupRetries: 0,

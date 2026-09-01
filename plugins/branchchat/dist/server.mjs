@@ -15755,6 +15755,7 @@ var StdioServerTransport = class {
 
 // mcp/lib/app-server-client.mjs
 import { spawn } from "node:child_process";
+import os2 from "node:os";
 import path2 from "node:path";
 import readline from "node:readline";
 
@@ -15905,13 +15906,15 @@ var AppServerClient = class {
     requestTimeoutMs = 3e4,
     startupRetries = 2,
     spawnCommand = spawn,
-    findExecutable = findCodexExecutable
+    findExecutable = findCodexExecutable,
+    appServerCwd = os2.homedir()
   } = {}) {
     this.env = env;
     this.requestTimeoutMs = requestTimeoutMs;
     this.startupRetries = startupRetries;
     this.spawnCommand = spawnCommand;
     this.findExecutable = findExecutable;
+    this.appServerCwd = appServerCwd;
     this.nextId = 1;
     this.pending = /* @__PURE__ */ new Map();
   }
@@ -15948,6 +15951,7 @@ var AppServerClient = class {
     const binDirectory = path2.dirname(executable2);
     childEnv.PATH = `${binDirectory}${path2.delimiter}${childEnv.PATH || ""}`;
     const child = this.spawnCommand(executable2, ["app-server"], {
+      cwd: this.appServerCwd,
       env: childEnv,
       shell: false,
       stdio: ["pipe", "pipe", "pipe"]
