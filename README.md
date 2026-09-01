@@ -1,6 +1,6 @@
 # BranchChat Marketplace
 
-Private Codex marketplace for BranchChat. BranchChat binds each managed Codex task to one Git branch and one isolated worktree.
+Public Codex marketplace for BranchChat. BranchChat binds each managed Codex task to one Git branch and one isolated worktree.
 
 By default, new worktrees live beside the local repository. For `/projects/apifarm`, BranchChat uses `/projects/apifarm-worktrees/<task-id>` rather than `~/.codex/worktrees`. These are local Git worktrees associated with the same repository; no remote push is performed.
 
@@ -18,14 +18,14 @@ The JavaScript dependencies are already bundled into `plugins/branchchat/dist/se
 
 ## Install
 
-Authenticate Git for the GitHub account that has access to this private repository, then run:
+Run:
 
 ```bash
 codex plugin marketplace add janepan1123/branchchat-marketplace --ref main
 codex plugin add branchchat@branchchat-marketplace
 ```
 
-Restart Codex and start a new task so the Skill and MCP tools are loaded. Example:
+You do not need to quit Codex. In Codex Desktop, open **Settings → Plugins**, switch **BranchChat** off, then switch it on again. This reloads the plugin's MCP server in the running app. Example:
 
 ```text
 @BranchChat create an isolated task named Backend API from main.
@@ -38,7 +38,9 @@ codex plugin marketplace upgrade branchchat-marketplace
 codex plugin add branchchat@branchchat-marketplace
 ```
 
-Restart Codex and test from a new task after updating.
+Keep Codex open, then reload BranchChat from **Settings → Plugins** by switching it off and on. Existing tasks remain open and can use the refreshed MCP tools.
+
+If an update changes only the Skill instructions and they are not reflected immediately, send the next message or open a new task; a full Codex restart is not required.
 
 ## Remove
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0 no-restart reload workflow - 2026-09-01
+
+- Document the Codex Desktop plugin off/on workflow that reloads BranchChat MCP without quitting the app.
+- Clarify that the GitHub marketplace is public and consumers do not need repository access grants.
+
 ## 0.1.0 App Server resilience - 2026-09-01
 
 - Retry transient Codex App Server startup exits before any Git resources are created.

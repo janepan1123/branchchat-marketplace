@@ -33,16 +33,18 @@ BranchChat opts its private App Server connection into `experimentalApi` because
 BranchChat never automatically merges, pushes, resets, cleans, or deletes a branch.
 If BranchChat cannot create a task, it reports the failure and does not fall back to a Codex-native worktree.
 
-## Install from the private GitHub marketplace
+## Install from the public GitHub marketplace
 
 ```bash
 codex plugin marketplace add janepan1123/branchchat-marketplace --ref main
 codex plugin add branchchat@branchchat-marketplace
 ```
 
-The repository is private, so Git must already be authenticated for the GitHub account that was granted access. Runtime dependencies are bundled into `dist/server.mjs`; consumers do not run `npm install`.
+Runtime dependencies are bundled into `dist/server.mjs`; consumers do not run `npm install`.
 
-Open a new Codex task after installation so the Skill and MCP tools are loaded. In the app, select **Plugins / Sources → BranchChat**, or mention `@BranchChat` where plugin mentions are supported.
+You do not need to quit Codex after installation or update. In Codex Desktop, open **Settings → Plugins**, switch **BranchChat** off, then switch it on again. This reloads the MCP server inside the running app. Existing tasks remain open and can use the refreshed tools. If updated Skill instructions are not reflected immediately, send the next message or open a new task.
+
+In the app, select **Plugins / Sources → BranchChat**, or mention `@BranchChat` where plugin mentions are supported.
 
 To remove the plugin configuration and cached copy:
 
@@ -60,4 +62,4 @@ npm run validate
 npm run smoke
 ```
 
-The committed `dist/server.mjs` is the install-time runtime. After changing source, rebuild it, update the Codex cachebuster, publish the marketplace, upgrade/reinstall it, and test from a new Codex task.
+The committed `dist/server.mjs` is the install-time runtime. After changing source, rebuild it, update the Codex cachebuster, publish the marketplace, upgrade/reinstall it, reload BranchChat from **Settings → Plugins**, and test its MCP tools without restarting Codex.
