@@ -2,6 +2,8 @@
 
 Private Codex marketplace for BranchChat. BranchChat binds each managed Codex task to one Git branch and one isolated worktree.
 
+By default, new worktrees live beside the local repository. For `/projects/apifarm`, BranchChat uses `/projects/apifarm-worktrees/<task-id>` rather than `~/.codex/worktrees`. These are local Git worktrees associated with the same repository; no remote push is performed.
+
 ## Requirements
 
 - macOS

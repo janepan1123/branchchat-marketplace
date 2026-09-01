@@ -3261,8 +3261,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path6) {
-      let input = path6;
+    function removeDotSegments(path7) {
+      let input = path7;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3667,8 +3667,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path6 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path6 && path6 !== "/" ? path6 : void 0;
+        const path7 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path7 && path7 !== "/" ? path7 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7427,10 +7427,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path6) {
-  if (!path6)
+function getElementAtPath(obj, path7) {
+  if (!path7)
     return obj;
-  return path6.reduce((acc, key) => acc?.[key], obj);
+  return path7.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7839,11 +7839,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path6, issues) {
+function prefixIssues(path7, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path6);
+    iss.path.unshift(path7);
     return iss;
   });
 }
@@ -7990,16 +7990,16 @@ function flattenError(error2, mapper = (issue2) => issue2.message) {
 }
 function formatError(error2, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error3, path6 = []) => {
+  const processError = (error3, path7 = []) => {
     for (const issue2 of error3.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path6, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path7, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path6, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path6, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
       } else {
-        const fullpath = [...path6, ...issue2.path];
+        const fullpath = [...path7, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -15797,10 +15797,13 @@ import os from "node:os";
 import path from "node:path";
 function branchChatPaths(env = process.env, home = os.homedir()) {
   const root = path.resolve(env.BRANCHCHAT_HOME || path.join(home, ".branchchat"));
+  const configuredWorktreesRoot = env.BRANCHCHAT_WORKTREES_ROOT ? path.resolve(env.BRANCHCHAT_WORKTREES_ROOT) : null;
   return {
     root,
     stateFile: path.resolve(env.BRANCHCHAT_STATE_PATH || path.join(root, "state.json")),
-    worktreesRoot: path.resolve(env.BRANCHCHAT_WORKTREES_ROOT || path.join(root, "worktrees")),
+    // Keep the legacy root so tasks created by older versions remain valid.
+    worktreesRoot: configuredWorktreesRoot || path.join(root, "worktrees"),
+    worktreesRootConfigured: Boolean(configuredWorktreesRoot),
     locksRoot: path.join(root, "locks"),
     logsRoot: path.join(root, "logs"),
     logFile: path.join(root, "logs", "branchchat.log")
@@ -15828,8 +15831,13 @@ function defaultBranchName(taskTitle, taskId) {
   const slug = slugify2(taskTitle, `task-${suffix}`);
   return `branchchat/${slug}`;
 }
-function taskWorktreePath(paths, repoId, taskId) {
-  return path.join(paths.worktreesRoot, repoId, taskId);
+function repositoryWorktreesRoot(paths, repoRoot, repoId) {
+  if (paths.worktreesRootConfigured) return path.join(paths.worktreesRoot, repoId);
+  const repositoryName = path.basename(path.resolve(repoRoot));
+  return path.join(path.dirname(path.resolve(repoRoot)), `${repositoryName}-worktrees`);
+}
+function taskWorktreePath(paths, repoRoot, repoId, taskId) {
+  return path.join(repositoryWorktreesRoot(paths, repoRoot, repoId), taskId);
 }
 async function executable(value) {
   try {
@@ -16105,6 +16113,9 @@ function validateState(value) {
     if (!task || task.id !== id || required2.some((key) => typeof task[key] !== "string")) {
       throw new BranchChatError("STATE_CORRUPT", `Invalid task record '${id}'.`, { recoverable: false });
     }
+    if (task.managedWorktreesRoot !== void 0 && typeof task.managedWorktreesRoot !== "string") {
+      throw new BranchChatError("STATE_CORRUPT", `Invalid managed worktree root for task '${id}'.`, { recoverable: false });
+    }
   }
   return value;
 }
@@ -16165,6 +16176,7 @@ var StateStore = class {
 
 // mcp/lib/task-service.mjs
 import { spawn as spawn3 } from "node:child_process";
+import path6 from "node:path";
 
 // mcp/lib/git.mjs
 import { spawn as spawn2 } from "node:child_process";
@@ -16290,7 +16302,7 @@ async function statusSummary(worktreePath, baseSha, options = {}) {
   };
 }
 async function validateTaskWorktree(task, paths, options = {}) {
-  const expectedParent = path5.join(paths.worktreesRoot, task.repoId);
+  const expectedParent = task.managedWorktreesRoot || path5.join(paths.worktreesRoot, task.repoId);
   if (!isPathInside(expectedParent, task.worktreePath)) {
     throw new BranchChatError("MAPPING_DRIFT", "Stored worktree path is outside the managed repository directory.", {
       details: { taskId: task.id, worktreePath: task.worktreePath }
@@ -16438,7 +16450,7 @@ var TaskService = class {
     const branch = String(input.branchName || defaultBranchName(taskTitleValue, taskId)).trim();
     await validateBranchName(repoRoot, branch, this.gitOptions);
     const baseSha = await resolveCommit(repoRoot, baseRef, this.gitOptions);
-    const worktreePath = taskWorktreePath(this.paths, repoId, taskId);
+    const worktreePath = taskWorktreePath(this.paths, repoRoot, repoId, taskId);
     const createdAt = now();
     const task = {
       id: taskId,
@@ -16449,6 +16461,7 @@ var TaskService = class {
       baseSha,
       branch,
       worktreePath,
+      managedWorktreesRoot: path6.dirname(worktreePath),
       status: "PREPARING",
       pendingTitleSync: false,
       createdAt,

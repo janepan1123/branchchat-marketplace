@@ -80,7 +80,7 @@ export class TaskService {
     const branch = String(input.branchName || defaultBranchName(taskTitleValue, taskId)).trim();
     await validateBranchName(repoRoot, branch, this.gitOptions);
     const baseSha = await resolveCommit(repoRoot, baseRef, this.gitOptions);
-    const worktreePath = taskWorktreePath(this.paths, repoId, taskId);
+    const worktreePath = taskWorktreePath(this.paths, repoRoot, repoId, taskId);
     const createdAt = now();
     const task = {
       id: taskId,
@@ -91,6 +91,7 @@ export class TaskService {
       baseSha,
       branch,
       worktreePath,
+      managedWorktreesRoot: path.dirname(worktreePath),
       status: "PREPARING",
       pendingTitleSync: false,
       createdAt,

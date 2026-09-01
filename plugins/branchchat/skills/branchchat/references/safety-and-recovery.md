@@ -11,3 +11,4 @@ BranchChat state at `~/.branchchat/state.json` is the source of truth for thread
 - `DEEPLINK_OPEN_FAILED`: the task still exists. Give the thread ID so the user can select it from Codex history.
 
 BranchChat V0.1 never automatically merges, pushes, resets, cleans, deletes branches, or force-removes worktrees.
+After any BranchChat creation failure, stop and report the error. Do not substitute a Codex-native worktree under `~/.codex/worktrees`.

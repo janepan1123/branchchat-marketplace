@@ -23,6 +23,9 @@ export function validateState(value) {
     if (!task || task.id !== id || required.some((key) => typeof task[key] !== "string")) {
       throw new BranchChatError("STATE_CORRUPT", `Invalid task record '${id}'.`, { recoverable: false });
     }
+    if (task.managedWorktreesRoot !== undefined && typeof task.managedWorktreesRoot !== "string") {
+      throw new BranchChatError("STATE_CORRUPT", `Invalid managed worktree root for task '${id}'.`, { recoverable: false });
+    }
   }
   return value;
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0 repository-associated worktrees - 2026-09-01
+
+- Create new worktrees in a repository-named sibling directory instead of a Codex or BranchChat home directory.
+- Preserve `BRANCHCHAT_WORKTREES_ROOT` as an explicit override and keep legacy task mappings valid.
+- Prohibit silent fallback to Codex-native worktrees after a BranchChat creation failure.
+
 ## 0.1.0 distribution update - 2026-08-29
 
 - Bundle the MCP server and all JavaScript dependencies into `dist/server.mjs`.

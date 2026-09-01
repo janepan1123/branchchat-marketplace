@@ -8,6 +8,8 @@ Use the six `branchchat_*` MCP tools; do not substitute shell Git mutations.
 
 Report the new child thread ID, branch, frozen base SHA, worktree, title, open result, and warnings. A source worktree may be dirty; those uncommitted edits are not copied into the new worktree.
 
+By default, a repository at `/projects/apifarm` gets new worktrees under the local sibling directory `/projects/apifarm-worktrees/`. This is a local Git worktree linked to the same repository; creation never pushes to or writes directly into the remote. `BRANCHCHAT_WORKTREES_ROOT` remains an explicit override.
+
 ## List
 
 `branchchat_list_tasks` accepts `includeArchived`. With current-thread context it prefers that repository; without context it may return tasks across repositories. Group results by repository when more than one is returned.

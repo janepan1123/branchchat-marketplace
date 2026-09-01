@@ -13,6 +13,8 @@ BranchChat binds each Codex coding conversation to one Git branch and one isolat
 
 Ask BranchChat to create an isolated task, list tasks, switch tasks, show the current branch/worktree, synchronize metadata, or inspect a task before finishing. The plugin exposes six local MCP tools and stores mappings in `~/.branchchat/state.json`.
 
+New worktrees are local and repository-associated. For a repository at `/projects/apifarm`, BranchChat creates them under the sibling directory `/projects/apifarm-worktrees/<task-id>`, not under `~/.codex/worktrees`. Git worktrees cannot live on a remote server; they share the local repository and do not push anything. Set `BRANCHCHAT_WORKTREES_ROOT` only when an explicit custom local root is required. Existing tasks created under the older `~/.branchchat/worktrees` layout remain supported.
+
 Examples:
 
 ```text
@@ -24,6 +26,7 @@ Inspect the current task before finishing.
 ```
 
 BranchChat never automatically merges, pushes, resets, cleans, or deletes a branch.
+If BranchChat cannot create a task, it reports the failure and does not fall back to a Codex-native worktree.
 
 ## Install from the private GitHub marketplace
 

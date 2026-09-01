@@ -6,10 +6,15 @@ import path from "node:path";
 
 export function branchChatPaths(env = process.env, home = os.homedir()) {
   const root = path.resolve(env.BRANCHCHAT_HOME || path.join(home, ".branchchat"));
+  const configuredWorktreesRoot = env.BRANCHCHAT_WORKTREES_ROOT
+    ? path.resolve(env.BRANCHCHAT_WORKTREES_ROOT)
+    : null;
   return {
     root,
     stateFile: path.resolve(env.BRANCHCHAT_STATE_PATH || path.join(root, "state.json")),
-    worktreesRoot: path.resolve(env.BRANCHCHAT_WORKTREES_ROOT || path.join(root, "worktrees")),
+    // Keep the legacy root so tasks created by older versions remain valid.
+    worktreesRoot: configuredWorktreesRoot || path.join(root, "worktrees"),
+    worktreesRootConfigured: Boolean(configuredWorktreesRoot),
     locksRoot: path.join(root, "locks"),
     logsRoot: path.join(root, "logs"),
     logFile: path.join(root, "logs", "branchchat.log"),
@@ -51,8 +56,14 @@ export function defaultBranchName(taskTitle, taskId) {
   return `branchchat/${slug}`;
 }
 
-export function taskWorktreePath(paths, repoId, taskId) {
-  return path.join(paths.worktreesRoot, repoId, taskId);
+export function repositoryWorktreesRoot(paths, repoRoot, repoId) {
+  if (paths.worktreesRootConfigured) return path.join(paths.worktreesRoot, repoId);
+  const repositoryName = path.basename(path.resolve(repoRoot));
+  return path.join(path.dirname(path.resolve(repoRoot)), `${repositoryName}-worktrees`);
+}
+
+export function taskWorktreePath(paths, repoRoot, repoId, taskId) {
+  return path.join(repositoryWorktreesRoot(paths, repoRoot, repoId), taskId);
 }
 
 async function executable(value) {

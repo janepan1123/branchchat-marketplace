@@ -126,7 +126,9 @@ export async function statusSummary(worktreePath, baseSha, options = {}) {
 }
 
 export async function validateTaskWorktree(task, paths, options = {}) {
-  const expectedParent = path.join(paths.worktreesRoot, task.repoId);
+  // Older state records do not contain managedWorktreesRoot and remain bound to
+  // the legacy ~/.branchchat/worktrees/<repo-id> location.
+  const expectedParent = task.managedWorktreesRoot || path.join(paths.worktreesRoot, task.repoId);
   if (!isPathInside(expectedParent, task.worktreePath)) {
     throw new BranchChatError("MAPPING_DRIFT", "Stored worktree path is outside the managed repository directory.", {
       details: { taskId: task.id, worktreePath: task.worktreePath },
