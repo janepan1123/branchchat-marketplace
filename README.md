@@ -6,7 +6,9 @@ By default, new worktrees live beside the local repository. For `/projects/apifa
 
 When `baseRef` is omitted, BranchChat detects the remote default branch (such as `main` or `master`) and falls back to the current source branch if no remote default reference is available.
 
-After creating a branch, BranchChat registers the fork as a user-owned Codex task, verifies that it appears in the task list, and opens that new task automatically. The source conversation stays bound to its original branch.
+After creating a branch, BranchChat registers the fork as a user-owned Codex task, verifies that it appears in the task list, and opens that new task automatically. If the branch already belongs to an active BranchChat task, the same request validates and opens that task without requiring a second message. The source conversation stays bound to its original branch.
+
+When the source conversation belongs to a Codex project, the new conversation inherits that same project assignment.
 
 ## Requirements
 

@@ -227,8 +227,10 @@ export class AppServerClient {
     return this.request("thread/name/set", { threadId, name }, { retries: 1 });
   }
 
-  async updateThreadMetadata(threadId, gitInfo) {
-    return this.request("thread/metadata/update", { threadId, gitInfo }, { retries: 1 });
+  async updateThreadMetadata(threadId, gitInfo, { projectId } = {}) {
+    const params = { threadId, gitInfo };
+    if (typeof projectId === "string" && projectId.trim()) params.projectId = projectId;
+    return this.request("thread/metadata/update", params, { retries: 1 });
   }
 
   async listThreads(limit = 20) {

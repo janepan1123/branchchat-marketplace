@@ -4,6 +4,7 @@ BranchChat state at `~/.branchchat/state.json` is the source of truth for thread
 
 - `CURRENT_THREAD_UNAVAILABLE`: ask the user to invoke BranchChat from the source Codex conversation in a new thread. Do not choose the most recent thread.
 - `BRANCH_EXISTS_UNMANAGED`: the Git branch exists without a BranchChat mapping. V0.1 cannot adopt it; choose another name or manage it manually.
+- `TASK_NOT_READY`: the branch has a BranchChat mapping, but the bound task is incomplete or in an error state. Report its task ID and status; do not create another branch or task with the same name.
 - `TASK_DRIFT`: report expected versus actual branch/worktree and stop writes. Never repair with `git switch` automatically.
 - `STATE_CORRUPT`: preserve the state file and report its path. Do not overwrite it with an empty state.
 - `THREAD_FORK_FAILED`: report whether the newly created worktree/branch were rolled back, plus the returned App Server error details. If cleanup was incomplete, preserve every recovery path and command detail returned by the tool.

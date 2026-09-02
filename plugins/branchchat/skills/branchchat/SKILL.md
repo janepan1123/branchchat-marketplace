@@ -15,7 +15,7 @@ conversation ↔ task ↔ branch ↔ worktree
 
 ## Route the request
 
-- Create an isolated coding task from this conversation: call `branchchat_create_task`.
+- Create or open an isolated coding task from this conversation: call `branchchat_create_task`.
 - List parallel tasks: call `branchchat_list_tasks`.
 - Open another task: call `branchchat_switch_task`.
 - Answer which branch/worktree the current conversation belongs to: call `branchchat_status` with `task: "current"`.
@@ -27,6 +27,8 @@ Read [references/tool-contracts.md](references/tool-contracts.md) when selecting
 ## Required behavior
 
 - Creating a task defaults to forking the current conversation. If the MCP context does not provide the current thread ID, stop with `CURRENT_THREAD_UNAVAILABLE`; do not guess from recent conversations.
+- If the requested branch is already managed by an active BranchChat task, the create call validates, synchronizes, and opens that existing task in the same operation. Do not ask the user to send a second “open task” message.
+- If the source Codex task belongs to a project, the created task must inherit that same `projectId`. Treat a returned `projectInherited: false` as a partial-success warning that should be surfaced.
 - When the user does not name a base ref, omit `baseRef` and let the server detect the repository default. Never assume `main`.
 - Let the BranchChat MCP tool create and validate branches/worktrees. Do not reproduce its Git mutations manually.
 - If BranchChat task creation fails, surface its error and stop. Never fall back to a Codex-native worktree under `~/.codex/worktrees`.
@@ -38,4 +40,4 @@ Read [references/tool-contracts.md](references/tool-contracts.md) when selecting
 
 ## Response shape
 
-Lead with the observable outcome. For successful creation or switching, show the task title, full branch, base ref/SHA when present, isolated worktree path, whether the target Codex task is visible in the task list, and whether it opened. Surface every warning. For status and finish inspection, distinguish clean/dirty state from commits ahead/behind and state explicitly that no merge or push was performed.
+Lead with the observable outcome. For successful creation or switching, show whether the task was newly created or an existing task was reused, the task title, full branch, base ref/SHA when present, isolated worktree path, inherited Codex project when present, whether the target Codex task is visible in the task list, and whether it opened. Surface every warning. For status and finish inspection, distinguish clean/dirty state from commits ahead/behind and state explicitly that no merge or push was performed.

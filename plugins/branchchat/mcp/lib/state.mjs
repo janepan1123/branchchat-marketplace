@@ -26,6 +26,9 @@ export function validateState(value) {
     if (task.managedWorktreesRoot !== undefined && typeof task.managedWorktreesRoot !== "string") {
       throw new BranchChatError("STATE_CORRUPT", `Invalid managed worktree root for task '${id}'.`, { recoverable: false });
     }
+    if (task.projectId !== undefined && task.projectId !== null && typeof task.projectId !== "string") {
+      throw new BranchChatError("STATE_CORRUPT", `Invalid Codex project for task '${id}'.`, { recoverable: false });
+    }
   }
   return value;
 }

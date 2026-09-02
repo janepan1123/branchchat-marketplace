@@ -31,6 +31,9 @@ function now() { return new Date().toISOString(); }
 function threadIdOf(thread) { return thread?.id || thread?.threadId; }
 function threadCwdOf(thread) { return thread?.cwd || thread?.workingDirectory || thread?.workspace?.cwd; }
 function threadNameOf(thread) { return thread?.name || thread?.title || null; }
+function threadProjectIdOf(thread) {
+  return typeof thread?.projectId === "string" && thread.projectId.trim() ? thread.projectId : null;
+}
 function activeTurnIdOf(thread) {
   const turns = Array.isArray(thread?.turns) ? thread.turns : [];
   return turns.findLast((turn) => turn?.status === "inProgress")?.id || null;
@@ -60,13 +63,13 @@ async function openThread(threadId, platform = process.platform) {
 }
 
 export class TaskService {
-  constructor({ paths, store, appServer, gitOptions = {}, logger, platform = process.platform }) {
+  constructor({ paths, store, appServer, gitOptions = {}, logger, platform = process.platform, openThread: openThreadOverride }) {
     this.paths = paths;
     this.store = store;
     this.appServer = appServer;
     this.gitOptions = gitOptions;
     this.logger = logger;
-    this.platform = platform;
+    this.openThread = openThreadOverride || ((threadId) => openThread(threadId, platform));
   }
 
   requireThreadId(meta) {
@@ -87,6 +90,7 @@ export class TaskService {
     }
     const sourceThread = await this.appServer.threadRead(sourceThreadId, { includeTurns: true });
     const sourceCwd = threadCwdOf(sourceThread);
+    const sourceProjectId = threadProjectIdOf(sourceThread);
     if (!sourceCwd) {
       throw new BranchChatError("THREAD_CWD_UNAVAILABLE", "The current Codex task has no working directory.", {
         details: { sourceThreadId },
@@ -94,47 +98,56 @@ export class TaskService {
     }
     const { repoRoot, worktreeRoot } = await discoverRepository(sourceCwd, this.gitOptions);
     const beforeTurnId = activeTurnIdOf(sourceThread) || turnIdOf(meta);
-    const baseRef = requestedBaseRef || await detectDefaultBaseRef(repoRoot, worktreeRoot, this.gitOptions);
     const repoId = repoIdFor(repoRoot);
     const taskId = newTaskId();
     const branch = String(input.branchName || defaultBranchName(taskTitleValue, taskId)).trim();
     await validateBranchName(repoRoot, branch, this.gitOptions);
-    const baseSha = await resolveCommit(repoRoot, baseRef, this.gitOptions);
-    const worktreePath = taskWorktreePath(this.paths, repoRoot, repoId, taskId);
-    const createdAt = now();
-    const task = {
-      id: taskId,
-      repoId,
-      title: taskTitleValue,
-      sourceThreadId,
-      baseRef,
-      baseSha,
-      branch,
-      worktreePath,
-      managedWorktreesRoot: path.dirname(worktreePath),
-      status: "PREPARING",
-      pendingTitleSync: false,
-      createdAt,
-      updatedAt: createdAt,
-    };
 
     return withFileLock(this.paths.locksRoot, repoId, async () => {
+      let managedTask = null;
+      let task;
       await this.store.mutate(async (state) => {
-        const managed = Object.values(state.tasks).find((candidate) =>
+        managedTask = Object.values(state.tasks).find((candidate) =>
           candidate.repoId === repoId && candidate.branch === branch && ACTIVE_STATUSES.has(candidate.status));
-        if (managed) {
-          throw new BranchChatError("TASK_ALREADY_EXISTS", "This branch is already managed by BranchChat.", {
-            details: { taskId: managed.id, branch },
-          });
-        }
+        if (managedTask) return;
         if (await branchExists(repoRoot, branch, this.gitOptions)) {
           throw new BranchChatError("BRANCH_EXISTS_UNMANAGED", "The branch already exists but is not managed by BranchChat.", {
             details: { branch },
           });
         }
+        const baseRef = requestedBaseRef || await detectDefaultBaseRef(repoRoot, worktreeRoot, this.gitOptions);
+        const baseSha = await resolveCommit(repoRoot, baseRef, this.gitOptions);
+        const worktreePath = taskWorktreePath(this.paths, repoRoot, repoId, taskId);
+        const createdAt = now();
+        task = {
+          id: taskId,
+          repoId,
+          title: taskTitleValue,
+          sourceThreadId,
+          projectId: sourceProjectId,
+          baseRef,
+          baseSha,
+          branch,
+          worktreePath,
+          managedWorktreesRoot: path.dirname(worktreePath),
+          status: "PREPARING",
+          pendingTitleSync: false,
+          createdAt,
+          updatedAt: createdAt,
+        };
         state.repos[repoId] = { id: repoId, root: repoRoot, defaultBranch: baseRef };
         state.tasks[taskId] = task;
       });
+
+      if (managedTask) {
+        return this.#reuseManagedTask(managedTask, {
+          sourceProjectId,
+          requestedBaseRef,
+          openAfterCreate: input.openAfterCreate !== false,
+        });
+      }
+
+      const { baseRef, baseSha, worktreePath } = task;
 
       try {
         await createWorktree(repoRoot, worktreePath, branch, baseSha, this.gitOptions);
@@ -188,13 +201,17 @@ export class TaskService {
         pendingTitleSync = true;
         warnings.push(`Task title will be retried later: ${error.message}`);
       }
+      let metadataSynced = true;
       try {
         await this.appServer.updateThreadMetadata(
           childThreadId,
           { branch, sha: baseSha },
-          { taskId, repoId, worktreePath },
+          { projectId: sourceProjectId },
         );
-      } catch (error) { warnings.push(`Git metadata sync is unavailable: ${error.message}`); }
+      } catch (error) {
+        metadataSynced = false;
+        warnings.push(`Task metadata sync is unavailable: ${error.message}`);
+      }
       let sidebarVisible = null;
       try {
         sidebarVisible = await this.appServer.waitForThreadListed(childThreadId);
@@ -213,11 +230,13 @@ export class TaskService {
         pendingTitleSync,
         gitInfo: { dirtyFiles: gitInfo.dirtyFiles, ahead: gitInfo.ahead, behindBase: gitInfo.behindBase },
       });
-      const opened = input.openAfterCreate === false ? false : await openThread(childThreadId, this.platform);
+      const opened = input.openAfterCreate === false ? false : await this.openThread(childThreadId);
       if (input.openAfterCreate !== false && !opened) warnings.push("Could not open the new Codex task automatically; use its task ID from the Codex task list.");
       this.logger?.info("task-created", { taskId, sourceThreadId, threadId: childThreadId, repoId });
       return {
         ok: true,
+        created: true,
+        reused: false,
         task: {
           id: taskId,
           title: taskTitleValue,
@@ -228,9 +247,11 @@ export class TaskService {
           baseSha,
           worktreePath,
           threadTitle: desiredTitle,
+          projectId: sourceProjectId,
         },
         opened,
         sidebarVisible,
+        projectInherited: sourceProjectId ? metadataSynced : null,
         warnings,
       };
     });
@@ -277,7 +298,7 @@ export class TaskService {
     const task = await this.#resolveTask(input.task, meta);
     await validateTaskWorktree(task, this.paths, this.gitOptions);
     const sync = await this.#syncTask(task);
-    const opened = await openThread(task.threadId, this.platform);
+    const opened = await this.openThread(task.threadId);
     return { ok: true, threadId: task.threadId, branch: task.branch, opened, warnings: sync.warnings };
   }
 
@@ -344,16 +365,79 @@ export class TaskService {
     let titleSynced = true;
     try { await this.appServer.setThreadName(task.threadId, threadTitle(task.branch, task.title)); }
     catch (error) { titleSynced = false; warnings.push(`Task title sync failed: ${error.message}`); }
+    let metadataSynced = true;
     try {
       await this.appServer.updateThreadMetadata(
         task.threadId,
         { branch: task.branch, sha: await headSha(task.worktreePath, this.gitOptions) },
-        { taskId: task.id, repoId: task.repoId, worktreePath: task.worktreePath },
+        { projectId: task.projectId || null },
       );
-    } catch (error) { warnings.push(`Git metadata sync is unavailable: ${error.message}`); }
+    } catch (error) {
+      metadataSynced = false;
+      warnings.push(`Task metadata sync is unavailable: ${error.message}`);
+    }
     const gitInfo = { dirtyFiles: summary.dirtyFiles, ahead: summary.ahead, behindBase: summary.behindBase };
     await this.#updateTask(task.id, { pendingTitleSync: !titleSynced, gitInfo });
-    return { titleSynced, gitInfo, warnings };
+    return { titleSynced, metadataSynced, gitInfo, warnings };
+  }
+
+  async #reuseManagedTask(task, { sourceProjectId, requestedBaseRef, openAfterCreate }) {
+    if (task.status !== "ACTIVE" || !task.threadId) {
+      throw new BranchChatError("TASK_NOT_READY", "This branch is managed by BranchChat, but its task is not ready to open.", {
+        details: { taskId: task.id, branch: task.branch, status: task.status },
+      });
+    }
+    await validateTaskWorktree(task, this.paths, this.gitOptions);
+    const warnings = [];
+    let resolvedTask = task;
+    if (!task.projectId && sourceProjectId) {
+      await this.#updateTask(task.id, { projectId: sourceProjectId });
+      resolvedTask = { ...task, projectId: sourceProjectId };
+    } else if (task.projectId && sourceProjectId && task.projectId !== sourceProjectId) {
+      warnings.push("The existing task remains assigned to its original Codex project.");
+    }
+    if (requestedBaseRef && requestedBaseRef !== task.baseRef) {
+      warnings.push(`The existing task keeps its frozen base '${task.baseRef}'; requested base '${requestedBaseRef}' was not applied.`);
+    }
+    const sync = await this.#syncTask(resolvedTask);
+    warnings.push(...sync.warnings);
+    let sidebarVisible = null;
+    try {
+      sidebarVisible = await this.appServer.waitForThreadListed(resolvedTask.threadId);
+      if (!sidebarVisible) warnings.push("The existing Codex task is not visible in the task list yet; open it by task ID.");
+    } catch (error) {
+      warnings.push(`Could not verify that the existing Codex task is visible: ${error.message}`);
+    }
+    const opened = openAfterCreate ? await this.openThread(resolvedTask.threadId) : false;
+    if (openAfterCreate && !opened) warnings.push("Could not open the existing Codex task automatically; use its task ID from the Codex task list.");
+    this.logger?.info("task-reused", {
+      taskId: resolvedTask.id,
+      threadId: resolvedTask.threadId,
+      repoId: resolvedTask.repoId,
+    });
+    return {
+      ok: true,
+      created: false,
+      reused: true,
+      task: {
+        id: resolvedTask.id,
+        title: resolvedTask.title,
+        threadId: resolvedTask.threadId,
+        sourceThreadId: resolvedTask.sourceThreadId,
+        branch: resolvedTask.branch,
+        baseRef: resolvedTask.baseRef,
+        baseSha: resolvedTask.baseSha,
+        worktreePath: resolvedTask.worktreePath,
+        threadTitle: threadTitle(resolvedTask.branch, resolvedTask.title),
+        projectId: resolvedTask.projectId || null,
+      },
+      opened,
+      sidebarVisible,
+      projectInherited: sourceProjectId
+        ? resolvedTask.projectId === sourceProjectId && sync.metadataSynced
+        : null,
+      warnings,
+    };
   }
 
   async #resolveTask(selector, meta) {
@@ -391,6 +475,7 @@ export class TaskService {
       title: task.title,
       branch: task.branch,
       threadId: task.threadId || null,
+      projectId: task.projectId || null,
       status: task.status,
       worktreePath: task.worktreePath,
       git: gitInfo,

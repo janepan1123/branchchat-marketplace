@@ -9,15 +9,25 @@ import { StateStore } from "../mcp/lib/state.mjs";
 import { TaskService } from "../mcp/lib/task-service.mjs";
 
 class FakeAppServer {
-  constructor(cwd, { failTitles = false, failFork = false, hideForks = false, turns = [] } = {}) {
+  constructor(cwd, {
+    failTitles = false,
+    failFork = false,
+    hideForks = false,
+    projectId = null,
+    turns = [],
+  } = {}) {
     this.cwd = cwd;
     this.failTitles = failTitles;
     this.failFork = failFork;
     this.hideForks = hideForks;
+    this.projectId = projectId;
     this.turns = turns;
     this.forks = [];
+    this.metadataUpdates = [];
   }
-  async threadRead(threadId) { return { id: threadId, cwd: this.cwd, name: "Source", turns: this.turns }; }
+  async threadRead(threadId) {
+    return { id: threadId, cwd: this.cwd, name: "Source", projectId: this.projectId, turns: this.turns };
+  }
   async forkThread(sourceThreadId, cwd, options = {}) {
     if (this.failFork) throw new Error("fork unavailable");
     const thread = { id: `child-${this.forks.length + 1}`, cwd, sourceThreadId, ...options };
@@ -25,7 +35,9 @@ class FakeAppServer {
     return thread;
   }
   async setThreadName() { if (this.failTitles) throw new Error("no rollout found"); }
-  async updateThreadMetadata() {}
+  async updateThreadMetadata(threadId, gitInfo, options = {}) {
+    this.metadataUpdates.push({ threadId, gitInfo, options });
+  }
   async waitForThreadListed() { return !this.hideForks; }
 }
 
@@ -65,6 +77,62 @@ test("two conversations get independent branches and worktrees from one base", a
   assert.match(await readFile(path.join(first.task.worktreePath, "shared.txt"), "utf8"), /frontend/);
   assert.doesNotMatch(await readFile(path.join(first.task.worktreePath, "shared.txt"), "utf8"), /backend/);
   assert.equal(await readFile(path.join(repo, "shared.txt"), "utf8"), "base\n");
+});
+
+test("creating an already managed branch opens the existing task in the same call", async (t) => {
+  const { repo, paths } = await fixture(t);
+  const appServer = new FakeAppServer(repo);
+  const opened = [];
+  const service = new TaskService({
+    paths,
+    store: new StateStore(paths),
+    appServer,
+    openThread: async (threadId) => {
+      opened.push(threadId);
+      return true;
+    },
+  });
+  const first = await service.createTask({
+    taskTitle: "UX repair",
+    branchName: "branchchat/ux",
+    openAfterCreate: false,
+  }, { threadId: "source" });
+  appServer.projectId = "project-sproutstudio";
+  const second = await service.createTask({
+    taskTitle: "UX new feature",
+    branchName: "branchchat/ux",
+  }, { threadId: "source" });
+
+  assert.equal(first.created, true);
+  assert.equal(second.created, false);
+  assert.equal(second.reused, true);
+  assert.equal(second.task.id, first.task.id);
+  assert.equal(second.task.title, "UX repair");
+  assert.equal(second.task.projectId, "project-sproutstudio");
+  assert.equal(second.projectInherited, true);
+  assert.equal(second.opened, true);
+  assert.deepEqual(opened, [first.task.threadId]);
+  assert.equal(appServer.forks.length, 1);
+  const storedTasks = (await new StateStore(paths).read()).tasks;
+  assert.equal(Object.keys(storedTasks).length, 1);
+  assert.equal(storedTasks[first.task.id].projectId, "project-sproutstudio");
+});
+
+test("a new task inherits the source Codex project", async (t) => {
+  const { repo, paths } = await fixture(t);
+  const appServer = new FakeAppServer(repo, { projectId: "project-sproutstudio" });
+  const service = new TaskService({ paths, store: new StateStore(paths), appServer, platform: "linux" });
+  const result = await service.createTask({
+    taskTitle: "Project child",
+    branchName: "feature/project-child",
+    openAfterCreate: false,
+  }, { threadId: "source" });
+
+  assert.equal(result.task.projectId, "project-sproutstudio");
+  assert.equal(result.projectInherited, true);
+  assert.equal(appServer.metadataUpdates[0].options.projectId, "project-sproutstudio");
+  const stored = (await new StateStore(paths).read()).tasks[result.task.id];
+  assert.equal(stored.projectId, "project-sproutstudio");
 });
 
 test("an omitted base ref detects a master remote default", async (t) => {

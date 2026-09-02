@@ -37,6 +37,23 @@ test("forkThread excludes the active turn and replaces the runtime workspace", a
   });
 });
 
+test("thread metadata update assigns the inherited Codex project", async () => {
+  const client = new RecordingAppServerClient();
+  await client.updateThreadMetadata(
+    "child",
+    { branch: "branchchat/ux", sha: "abc123" },
+    { projectId: "project-sproutstudio" },
+  );
+  assert.deepEqual(client.recorded, {
+    method: "thread/metadata/update",
+    params: {
+      threadId: "child",
+      gitInfo: { branch: "branchchat/ux", sha: "abc123" },
+      projectId: "project-sproutstudio",
+    },
+  });
+});
+
 test("waits until the user-owned fork appears in the Codex task list", async () => {
   const client = new AppServerClient();
   let calls = 0;

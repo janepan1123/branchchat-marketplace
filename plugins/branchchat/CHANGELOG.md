@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0 idempotent create and project inheritance - 2026-09-02
+
+- Turn repeated creation of an already managed branch into a validated open of the existing task in the same call.
+- Preserve the existing task's immutable branch/worktree/base mapping and avoid duplicate forks.
+- Assign new conversations to the source conversation's Codex project when one is present.
+- Persist project assignment for later metadata synchronization and expose creation/reuse and inheritance status in tool results.
+
 ## 0.1.0 visible fork automation - 2026-09-02
 
 - Mark forked conversations as user-owned Codex tasks so they appear as separate sidebar entries.
