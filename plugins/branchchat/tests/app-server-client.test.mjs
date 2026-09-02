@@ -31,9 +31,27 @@ test("forkThread excludes the active turn and replaces the runtime workspace", a
       cwd: "/projects/repo-worktrees/task",
       runtimeWorkspaceRoots: ["/projects/repo-worktrees/task"],
       excludeTurns: true,
+      threadSource: "user",
       beforeTurnId: "turn-active",
     },
   });
+});
+
+test("waits until the user-owned fork appears in the Codex task list", async () => {
+  const client = new AppServerClient();
+  let calls = 0;
+  client.listThreads = async () => {
+    calls += 1;
+    return { data: calls === 1 ? [] : [{ id: "child" }] };
+  };
+  assert.equal(await client.waitForThreadListed("child", { attempts: 2, delayMs: 0 }), true);
+  assert.equal(calls, 2);
+});
+
+test("reports when a fork never appears in the Codex task list", async () => {
+  const client = new AppServerClient();
+  client.listThreads = async () => ({ data: [] });
+  assert.equal(await client.waitForThreadListed("missing", { attempts: 2, delayMs: 0 }), false);
 });
 
 function fakeAppServer(onMessage) {

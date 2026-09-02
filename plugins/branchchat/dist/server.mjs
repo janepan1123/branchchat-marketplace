@@ -16072,7 +16072,13 @@ var AppServerClient = class {
     return result.thread || result;
   }
   async forkThread(threadId, cwd, { beforeTurnId } = {}) {
-    const params = { threadId, cwd, runtimeWorkspaceRoots: [cwd], excludeTurns: true };
+    const params = {
+      threadId,
+      cwd,
+      runtimeWorkspaceRoots: [cwd],
+      excludeTurns: true,
+      threadSource: "user"
+    };
     if (beforeTurnId) params.beforeTurnId = beforeTurnId;
     const result = await this.request("thread/fork", params);
     return result.thread || result;
@@ -16085,6 +16091,15 @@ var AppServerClient = class {
   }
   async listThreads(limit = 20) {
     return this.request("thread/list", { limit, sortKey: "updated_at" }, { reconnectRetries: 1 });
+  }
+  async waitForThreadListed(threadId, { attempts = 5, delayMs = 100 } = {}) {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const result = await this.listThreads(50);
+      const threads = Array.isArray(result?.data) ? result.data : Array.isArray(result?.threads) ? result.threads : [];
+      if (threads.some((thread) => (thread?.id || thread?.threadId) === threadId)) return true;
+      if (attempt + 1 < attempts && delayMs > 0) await sleep(delayMs * 2 ** attempt);
+    }
+    return false;
   }
   close() {
     const child = this.child;
@@ -16695,6 +16710,15 @@ var TaskService = class {
       } catch (error2) {
         warnings.push(`Git metadata sync is unavailable: ${error2.message}`);
       }
+      let sidebarVisible = null;
+      try {
+        sidebarVisible = await this.appServer.waitForThreadListed(childThreadId);
+        if (!sidebarVisible) {
+          warnings.push("The new Codex task was created but is not visible in the task list yet; open it by task ID.");
+        }
+      } catch (error2) {
+        warnings.push(`Could not verify that the new Codex task is visible: ${error2.message}`);
+      }
       if (await sourceDirty(worktreeRoot, this.gitOptions)) {
         warnings.push("Uncommitted changes in the source worktree are not included in the new task.");
       }
@@ -16721,6 +16745,7 @@ var TaskService = class {
           threadTitle: desiredTitle
         },
         opened,
+        sidebarVisible,
         warnings
       };
     });

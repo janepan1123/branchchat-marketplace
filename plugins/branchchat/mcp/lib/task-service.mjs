@@ -195,6 +195,15 @@ export class TaskService {
           { taskId, repoId, worktreePath },
         );
       } catch (error) { warnings.push(`Git metadata sync is unavailable: ${error.message}`); }
+      let sidebarVisible = null;
+      try {
+        sidebarVisible = await this.appServer.waitForThreadListed(childThreadId);
+        if (!sidebarVisible) {
+          warnings.push("The new Codex task was created but is not visible in the task list yet; open it by task ID.");
+        }
+      } catch (error) {
+        warnings.push(`Could not verify that the new Codex task is visible: ${error.message}`);
+      }
       if (await sourceDirty(worktreeRoot, this.gitOptions)) {
         warnings.push("Uncommitted changes in the source worktree are not included in the new task.");
       }
@@ -221,6 +230,7 @@ export class TaskService {
           threadTitle: desiredTitle,
         },
         opened,
+        sidebarVisible,
         warnings,
       };
     });

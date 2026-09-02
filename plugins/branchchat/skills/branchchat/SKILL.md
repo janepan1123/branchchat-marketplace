@@ -38,4 +38,4 @@ Read [references/tool-contracts.md](references/tool-contracts.md) when selecting
 
 ## Response shape
 
-Lead with the observable outcome. For successful creation or switching, show the task title, full branch, base ref/SHA when present, isolated worktree path, and whether the target Codex conversation opened. Surface every warning. For status and finish inspection, distinguish clean/dirty state from commits ahead/behind and state explicitly that no merge or push was performed.
+Lead with the observable outcome. For successful creation or switching, show the task title, full branch, base ref/SHA when present, isolated worktree path, whether the target Codex task is visible in the task list, and whether it opened. Surface every warning. For status and finish inspection, distinguish clean/dirty state from commits ahead/behind and state explicitly that no merge or push was performed.

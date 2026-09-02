@@ -30,6 +30,8 @@ When no base ref is specified, BranchChat detects the remote default branch (for
 
 BranchChat opts its private App Server connection into `experimentalApi` because `thread/fork.runtimeWorkspaceRoots` requires that negotiated capability. No global Codex experimental setting is required from the user.
 
+Created forks are registered as user-owned Codex tasks, verified in the normal task list, and opened automatically by default. The original conversation remains on its original branch; continue the isolated work in the newly opened task whose title starts with `⎇`.
+
 BranchChat never automatically merges, pushes, resets, cleans, or deletes a branch.
 If BranchChat cannot create a task, it reports the failure and does not fall back to a Codex-native worktree.
 

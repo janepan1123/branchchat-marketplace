@@ -211,7 +211,13 @@ export class AppServerClient {
   }
 
   async forkThread(threadId, cwd, { beforeTurnId } = {}) {
-    const params = { threadId, cwd, runtimeWorkspaceRoots: [cwd], excludeTurns: true };
+    const params = {
+      threadId,
+      cwd,
+      runtimeWorkspaceRoots: [cwd],
+      excludeTurns: true,
+      threadSource: "user",
+    };
     if (beforeTurnId) params.beforeTurnId = beforeTurnId;
     const result = await this.request("thread/fork", params);
     return result.thread || result;
@@ -227,6 +233,16 @@ export class AppServerClient {
 
   async listThreads(limit = 20) {
     return this.request("thread/list", { limit, sortKey: "updated_at" }, { reconnectRetries: 1 });
+  }
+
+  async waitForThreadListed(threadId, { attempts = 5, delayMs = 100 } = {}) {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const result = await this.listThreads(50);
+      const threads = Array.isArray(result?.data) ? result.data : Array.isArray(result?.threads) ? result.threads : [];
+      if (threads.some((thread) => (thread?.id || thread?.threadId) === threadId)) return true;
+      if (attempt + 1 < attempts && delayMs > 0) await sleep(delayMs * (2 ** attempt));
+    }
+    return false;
   }
 
   close() {

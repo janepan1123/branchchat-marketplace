@@ -9,10 +9,11 @@ import { StateStore } from "../mcp/lib/state.mjs";
 import { TaskService } from "../mcp/lib/task-service.mjs";
 
 class FakeAppServer {
-  constructor(cwd, { failTitles = false, failFork = false, turns = [] } = {}) {
+  constructor(cwd, { failTitles = false, failFork = false, hideForks = false, turns = [] } = {}) {
     this.cwd = cwd;
     this.failTitles = failTitles;
     this.failFork = failFork;
+    this.hideForks = hideForks;
     this.turns = turns;
     this.forks = [];
   }
@@ -25,6 +26,7 @@ class FakeAppServer {
   }
   async setThreadName() { if (this.failTitles) throw new Error("no rollout found"); }
   async updateThreadMetadata() {}
+  async waitForThreadListed() { return !this.hideForks; }
 }
 
 async function fixture(t, { initialBranch = "main" } = {}) {
@@ -56,6 +58,8 @@ test("two conversations get independent branches and worktrees from one base", a
   assert.equal(path.dirname(second.task.worktreePath), expectedWorktreesRoot);
   assert.doesNotMatch(first.task.worktreePath, /[\\/]\.codex[\\/]worktrees[\\/]/);
   assert.equal(first.task.baseSha, second.task.baseSha);
+  assert.equal(first.sidebarVisible, true);
+  assert.equal(second.sidebarVisible, true);
   await appendFile(path.join(first.task.worktreePath, "shared.txt"), "frontend\n");
   await appendFile(path.join(second.task.worktreePath, "shared.txt"), "backend\n");
   assert.match(await readFile(path.join(first.task.worktreePath, "shared.txt"), "utf8"), /frontend/);
@@ -201,4 +205,21 @@ test("title failure is non-fatal and persisted for retry", async (t) => {
   const task = (await new StateStore(paths).read()).tasks[result.task.id];
   assert.equal(task.status, "ACTIVE");
   assert.equal(task.pendingTitleSync, true);
+});
+
+test("a hidden fork is reported instead of being mistaken for a visible task", async (t) => {
+  const { repo, paths } = await fixture(t);
+  const service = new TaskService({
+    paths,
+    store: new StateStore(paths),
+    appServer: new FakeAppServer(repo, { hideForks: true }),
+    platform: "linux",
+  });
+  const result = await service.createTask({
+    taskTitle: "Visible task",
+    branchName: "feature/visible-task",
+    openAfterCreate: false,
+  }, { threadId: "source" });
+  assert.equal(result.sidebarVisible, false);
+  assert.match(result.warnings.join("\n"), /not visible in the task list/);
 });

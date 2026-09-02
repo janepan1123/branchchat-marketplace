@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0 visible fork automation - 2026-09-02
+
+- Mark forked conversations as user-owned Codex tasks so they appear as separate sidebar entries.
+- Verify task-list visibility before reporting creation success and surface a warning when Codex has not indexed the new task.
+- Continue opening the newly created task automatically while leaving the source conversation on its original branch.
+
 ## 0.1.0 stable App Server working directory - 2026-09-01
 
 - Start the private Codex App Server from the user's home directory instead of inheriting the plugin cache directory.
